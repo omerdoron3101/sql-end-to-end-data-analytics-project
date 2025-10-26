@@ -1,0 +1,116 @@
+/* ===============================================================================
+   Product Report
+   =============================================================================== 
+
+   Script Purpose:
+       This report consolidates key product metrics and behaviors.
+
+   Highlights:
+	   1. Gathers essential fields such as product name, category, subcategory, and cost.
+	   2. Segments products by revenue to identify High-Performers, Mid-Range, or Low-Performers.
+	   3. Aggregates product-level metrics:
+			- total orders
+			- total sales
+			- total quantity sold
+			- total customers (unique)
+			- lifespan (in months)
+  	   4. Calculates valuable KPIs:
+			- recency (months since last sale)
+			- average order revenue (AOR)
+			- average monthly revenue
+ 
+   =============================================================================== */
+
+IF OBJECT_ID('gold.report_products', 'V') IS NOT NULL
+	DROP VIEW gold.report_products;
+GO
+
+CREATE VIEW gold.report_products AS
+	/* -----------------------------------------------------------------------------
+	   Base CTE Query: Retrieves core columns from tables.
+	   This layer joins fact and dimension tables to form the foundational dataset.
+	   ----------------------------------------------------------------------------- */
+	WITH base_query AS (
+		SELECT
+			dp.product_key,
+			dp.product_name,
+			dp.category,
+			dp.subcategory_id AS subcategory,
+			dp.cost,
+			fs.sales_amount,
+			fs.quantity,
+			fs.price,
+			fs.order_number,
+			fs.order_date,
+			fs.customer_key
+		FROM gold.fact_sales fs
+		LEFT JOIN gold.dim_products dp
+		ON        fs.product_key = dp.product_key
+	)
+
+	/* -----------------------------------------------------------------------------
+	   Intermediate CTE Query: Product Aggregations
+	   Summarizes key metrics at the product level.
+	   Each row in the result represents one unique product.
+	   ----------------------------------------------------------------------------- */
+	, product_aggregation AS (
+		SELECT
+			product_key,
+			product_name,
+			category,
+			subcategory,
+			cost,
+			COUNT(DISTINCT order_number) AS total_orders,
+			COUNT(DISTINCT customer_key) AS total_customers,
+			SUM(sales_amount) AS total_sales,
+			SUM(quantity) AS total_quantity,
+			MAX(order_date) AS last_sale_date,
+			DATEDIFF(month, MIN(order_date), MAX(order_date)) AS lifespan,
+			-- Compute average selling price per product.
+			-- Protects against division by zero if total quantity = 0.
+			CASE WHEN SUM(quantity) = 0 THEN NULL
+				 ELSE SUM(sales_amount) / SUM(quantity)
+			END AS avg_selling_price
+
+		FROM base_query
+		GROUP BY
+			product_key,
+			product_name,
+			category,
+			subcategory,
+			cost
+	)
+
+	/* -----------------------------------------------------------------------------
+	   Final Output: Combines all product metrics and applies business logic.
+	   Includes segmentation, recency, and revenue-based KPIs.
+	   ----------------------------------------------------------------------------- */
+SELECT
+	product_key,
+	product_name,
+	category,
+	subcategory,
+	cost,
+	-- Classify products by total sales to determine performance segments.
+	CASE WHEN total_sales > 50000 THEN 'High Performer'
+		 WHEN total_sales >= 10000 THEN 'Mid Range Performer'
+		 ELSE 'Low Performer'
+	END AS product_segment,
+	total_orders,
+	total_customers,
+	total_sales,
+	total_quantity,
+	avg_selling_price,
+	last_sale_date,
+	-- Measures how many months have passed since the last sale.
+	DATEDIFF(month, last_sale_date, GETDATE()) AS recency_in_months,
+	lifespan,
+	-- Compute average order revenue (AOR)
+	CASE WHEN total_orders = 0 THEN 0
+		 ELSE total_sales / total_orders
+	END AS avg_order_revenue,
+	-- Compute average monthly revenue (protects against division by zero)
+	CASE WHEN lifespan = 0 THEN total_sales
+		 ELSE total_sales / lifespan
+	END AS avg_monthly_revenue
+FROM product_aggregation;
