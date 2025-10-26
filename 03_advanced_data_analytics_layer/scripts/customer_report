@@ -1,0 +1,114 @@
+/* ===============================================================================
+   Customer Report
+   =============================================================================== 
+
+   Script Purpose:
+       This report consolidates key customer metrics and behavioral insights.
+
+   Highlights:
+		1. Retrieves essential customer and transaction fields (names, ages, order data).
+		2. Segments customers into meaningful groups:
+           - By category (VIP, Regular, New)
+           - By age range
+		3. Aggregates customer-level metrics:
+			- total orders
+			- total sales
+			- total quantity purchased
+			- total unique products
+			- lifespan (in months)
+		4. Calculates valuable KPIs:
+			- recency (months since last order)
+			- average order value (AOV)
+			- average monthly spend
+
+   =============================================================================== */
+
+IF OBJECT_ID('gold.report_customers', 'V') IS NOT NULL
+	DROP VIEW gold.report_customers;
+GO
+
+CREATE VIEW gold.report_customers AS
+	/* -----------------------------------------------------------------------------
+	   Base CTE Query: Retrieves the core columns from fact and dimension tables.
+	   This layer forms the foundation for customer-level aggregation.
+	   ----------------------------------------------------------------------------- */
+	WITH base_query AS (
+		SELECT
+			fs.order_number,
+			fs.product_key,
+			fs.order_date,
+			fs.sales_amount,
+			fs.quantity,
+			dc.customer_key,
+			dc.customer_number,
+			CONCAT(dc.first_name, ' ', dc.last_name) AS customer_name,
+			DATEDIFF(year, dc.birthdate, GETDATE()) AS age
+		FROM gold.fact_sales fs
+		LEFT JOIN gold.dim_customers dc
+			ON fs.customer_key = dc.customer_key
+		WHERE fs.order_date IS NOT NULL
+	),
+
+	/* -----------------------------------------------------------------------------
+	   Intermediate CTE Query: Customer Aggregations
+	   Summarizes key metrics at the customer level.
+	   Each row represents a unique customer with total purchases and engagement data.
+	   ----------------------------------------------------------------------------- */
+	customer_aggregation AS (
+		SELECT
+			customer_key,
+			customer_number,
+			customer_name,
+			age,
+			COUNT(DISTINCT order_number) AS total_orders,
+			SUM(sales_amount) AS total_spending,
+			SUM(quantity) AS total_quantity,
+			COUNT(DISTINCT product_key) AS total_products,
+			MAX(order_date) AS last_order_date,
+			DATEDIFF(month, MIN(order_date), MAX(order_date)) AS lifespan
+		FROM base_query
+		GROUP BY
+			customer_key,
+			customer_number,
+			customer_name,
+			age
+	)
+
+	/* -----------------------------------------------------------------------------
+	   Final Output: Combines all aggregated metrics and applies segmentation logic.
+	   Includes KPIs related to recency, spending behavior, and customer lifecycle.
+	   ----------------------------------------------------------------------------- */
+	SELECT
+		customer_key,
+		customer_number,
+		customer_name,
+		age,
+		-- Categorize customers by age group
+		CASE WHEN age < 20 THEN 'Under 20'
+			 WHEN age BETWEEN 20 AND 29 THEN '20-29'
+			 WHEN age BETWEEN 30 AND 39 THEN '30-39'
+			 WHEN age BETWEEN 40 AND 49 THEN '40-49'
+			 ELSE '50 and above'
+		END AS age_group,
+		-- Segment customers based on spending and engagement duration
+		CASE WHEN lifespan >= 12 AND total_spending > 5000 THEN 'VIP'
+			 WHEN lifespan >= 12 AND total_spending <= 5000 THEN 'Regular'
+			 ELSE 'New'
+		END AS customer_segments,
+		last_order_date,
+		-- Calculate how long since last order (in months)
+		DATEDIFF(month, last_order_date, GETDATE()) AS recency_in_months,
+		total_orders,
+		total_spending,
+		total_quantity,
+		total_products,
+		lifespan,
+		-- Compute average order value (AOV)
+		CASE WHEN total_orders = 0 THEN 0
+			 ELSE total_spending / total_orders
+		END AS avg_order_value,
+		-- Compute average monthly spend
+		CASE WHEN lifespan = 0 THEN total_spending
+			 ELSE total_spending / lifespan
+		END AS avg_monthly_spend
+	FROM customer_aggregation;
