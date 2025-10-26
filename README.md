@@ -18,7 +18,7 @@ The solution follows a layered approach based on the Medallion Architecture:
    - SQL-based analysis on fact and dimension tables  
    - Aggregations, CTEs, JOINs, ranking, and segmentation to explore sales, products, and customers  
 
-3. **Business Insights Layer**  
+3. **Advanced Data Analytics: Retail Sales Analytics Layer**  
    - Advanced queries to calculate KPIs (AOV, monthly revenue, moving averages)  
    - Actionable insights for inventory management, marketing strategy, and product optimization
 
