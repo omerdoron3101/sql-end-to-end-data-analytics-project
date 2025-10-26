@@ -50,19 +50,3 @@ Develop SQL-based analytics to deliver detailed insights into:
 - **Sales Trends**
 
 These insights empower stakeholders with key business metrics, enabling strategic decision-making.  
-
----
-
-## 🛡️ License
-
-This project is licensed under the [MIT License](LICENSE). You are free to use, modify, and share this project with proper attribution.
-
-## 🌟 About Me
-
-👋 Hi! I'm Omer Doron
-I’m a student of Information Systems specializing in Digital Innovation.
-I’m passionate about transforming raw information into meaningful insights.
-
-I created this project as part of my learning journey in data warehousing and analytics, and as a showcase of my technical and analytical skills.
-
-🔗 [Connect with me on LinkedIn](https://www.linkedin.com/in/omer-doron-a070732b1/)
